@@ -2,26 +2,24 @@ if arg[2] == "debug" then
     require("lldebugger").start()
 end
 
--- Import items from items.lua
 local items = require("items")
 local levelupTable = require("levelup")
+local skilling = require("skilling")
 local weapons = require("weapons")
 local armour = require("armour")
 local tools = require("tools")
 local shops = require("shops")
 local json = require("json")
--- State management
+
 local states = {}
 local currentState = "menu"
 local currentSkill = ""
 local currentAction = ""
 local timer = 0
 local tickCount = 0
-
--- Notification system
 local notifications = {}
 local notificationTimer = 0
--- Player data
+
 local player = {
     inventory = {
         coins = 0,
@@ -45,38 +43,52 @@ local player = {
     },
 }
 
-local woodcuttingActions = {
-    ["regular"] = function()
-        if tickCount < 3 then
+function woodcuttingActions(type)
+    if tickCount < 3 then
+        return
+    end
+    local data = skilling["woodcutting"][type]
+    if not data then
+        print("No woodcutting action defined for type: " .. type)
+        return
+    end
+    if tickCount < data.requiredRoll then
+        local baseStrength = math.floor((player.skills.woodcutting + tools[player.inventory.tools.axe].strength)/2)
+        local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
+        print(roll)
+        if roll ~= data.requiredRoll then
             return
         end
-        local requiredRoll = 15
-        if tickCount < requiredRoll then
-            local baseStrength = math.floor((player.skills.woodcutting + tools[player.inventory.tools.axe].strength)/2)
-            local roll = math.random(baseStrength+ tickCount, requiredRoll)
-            print(roll)
-            if roll ~= requiredRoll then
-                return
-            end
-        end
-        print("You start woodcutting...")
-        addItem("wood", 1)
-        addExperience("woodcutting", 10)
-        tickCount = 0
-    end,
-}
+    end
+    print("You start woodcutting...")
+    addItem(data.item, data.item_amount)
+    addExperience("woodcutting", data.experience)
+    tickCount = 0
+end
 
-local thievingActions = {
-    ["man"] = function()
-        if tickCount < 5 then
+
+function thievingActions(type) 
+    if tickCount < 3 then
+        return
+    end
+    local data = skilling["thieving"][type]
+    if not data then
+        print("No thieving action defined for type: " .. type)
+        return
+    end
+    if tickCount < data.requiredRoll then
+        local baseStrength = math.floor(player.skills.thieving)
+        local roll = math.random(baseStrength + tickCount, data.requiredRoll)
+        print(roll)
+        if roll ~= data.requiredRoll then
             return
         end
-        print("You start thieving...")
-        updateCoins(5)
-        addExperience("thieving", 10)
-        tickCount = 0
-    end,
-}
+    end
+    print("You start thieving...")
+    updateCoins(data.item_amount)
+    addExperience("thieving", data.experience)
+    tickCount = 0
+end
 
 function addItem(itemName, quantity)
     local item = items[itemName]
@@ -90,7 +102,6 @@ function addItem(itemName, quantity)
         player.inventory.backpack[itemName] = { item = itemName, quantity = quantity }
     end
     
-    -- Trigger notification
     addNotification(itemName, quantity, "center")
 end
 
@@ -123,7 +134,6 @@ function addExperience(skill, amount)
         if player.experience[skill] >= levelupTable[player.skills[skill]] then
             player.skills[skill] = player.skills[skill] + 1
             print(skill .. " leveled up to " .. player.skills[skill])
-            -- Add special level up notification
             addLevelUpNotification(skill, player.skills[skill])
         end
         addNotification(skill .. " experience", amount, "right")
@@ -132,18 +142,15 @@ function addExperience(skill, amount)
     end
 end
 
--- Notification system functions
 function calculateNotificationPosition(isLevelUp, location)
     local baseY, targetY, startY
-    local notificationHeight = 40 -- Approximate height of a notification
-    local spacing = 10 -- Space between notifications
+    local notificationHeight = 40
+    local spacing = 10
     
     if isLevelUp then
-        -- Level up notifications stack upward from bottom
         baseY = love.graphics.getHeight() - 100
         startY = love.graphics.getHeight() + 100
         
-        -- Count existing level up notifications
         local levelUpCount = 0
         for _, notif in ipairs(notifications) do
             if notif.isLevelUp then
@@ -153,11 +160,9 @@ function calculateNotificationPosition(isLevelUp, location)
         
         targetY = baseY - (levelUpCount * (notificationHeight + spacing))
     else
-        -- Regular notifications stack downward from top
         baseY = 50
         startY = -50
         
-        -- Count existing regular notifications by location
         local regularCount = 0
         for _, notif in ipairs(notifications) do
             if not notif.isLevelUp and notif.location == location then
@@ -179,12 +184,12 @@ function addNotification(itemName, quantity, location)
     
     local notification = {
         text = "+" .. quantity .. " " .. displayName,
-        y = startY, -- Start position
-        targetY = targetY, -- Target position
+        y = startY, 
+        targetY = targetY, 
         alpha = 1.0,
         timer = 0,
-        maxTime = 3.0, -- Linger for 3 seconds
-        slideSpeed = 200, -- pixels per second
+        maxTime = 3.0,
+        slideSpeed = 200,
         isSliding = true,
         isFading = false,
         location = location,
@@ -202,38 +207,34 @@ function addLevelUpNotification(skill, level)
     
     local notification = {
         text = "LEVEL UP! " .. skillName .. " is now level " .. level .. "!",
-        y = startY, -- Start position
-        targetY = targetY, -- Target position
+        y = startY,
+        targetY = targetY,
         alpha = 1.0,
         timer = 0,
-        maxTime = 4.0, -- Longer duration for level ups
-        slideSpeed = 300, -- Faster slide up
+        maxTime = 4.0,
+        slideSpeed = 300,
         isSliding = true,
         isFading = false,
         location = "center",
-        isLevelUp = true, -- Special flag for level up notifications
-        pulseTimer = 0, -- For pulsing effect
+        isLevelUp = true,
+        pulseTimer = 0,
     }
     
     table.insert(notifications, notification)
 end
 
--- Function to reposition all notifications smoothly
 function repositionNotifications()
     local notificationHeight = 40
     local spacing = 10
     
-    -- Reposition regular notifications by location
     local locationCounts = {left = 0, center = 0, right = 0}
     
     for _, notif in ipairs(notifications) do
         if not notif.isLevelUp then
             local newTargetY = 50 + (locationCounts[notif.location] * (notificationHeight + spacing))
             
-            -- Only update target if notification is not sliding in for the first time
             if not notif.isSliding or notif.y > -30 then
                 notif.targetY = newTargetY
-                -- If notification has finished its initial slide, make it slide to new position
                 if not notif.isSliding then
                     notif.isSliding = true
                 end
@@ -243,16 +244,13 @@ function repositionNotifications()
         end
     end
     
-    -- Reposition level up notifications
     local levelUpCount = 0
     for _, notif in ipairs(notifications) do
         if notif.isLevelUp then
             local newTargetY = love.graphics.getHeight() - 100 - (levelUpCount * (notificationHeight + spacing))
             
-            -- Only update target if notification is not sliding in for the first time
             if not notif.isSliding or notif.y < love.graphics.getHeight() + 30 then
                 notif.targetY = newTargetY
-                -- If notification has finished its initial slide, make it slide to new position
                 if not notif.isSliding then
                     notif.isSliding = true
                 end
@@ -268,17 +266,14 @@ function updateNotifications(dt)
         local notif = notifications[i]
         notif.timer = notif.timer + dt
         
-        -- Slide animation (up for level ups, down for normal notifications)
         if notif.isSliding then
             if notif.isLevelUp then
-                -- Slide up from bottom
                 notif.y = notif.y - notif.slideSpeed * dt
                 if notif.y <= notif.targetY then
                     notif.y = notif.targetY
                     notif.isSliding = false
                 end
             else
-                -- Slide down from top
                 notif.y = notif.y + notif.slideSpeed * dt
                 if notif.y >= notif.targetY then
                     notif.y = notif.targetY
@@ -287,26 +282,21 @@ function updateNotifications(dt)
             end
         end
         
-        -- Update pulse timer for level up notifications
         if notif.isLevelUp then
             notif.pulseTimer = notif.pulseTimer + dt
         end
         
-        -- Start fading after linger time
         if notif.timer >= notif.maxTime - 1.0 and not notif.isFading then
             notif.isFading = true
         end
         
-        -- Fade out phase
         if notif.isFading then
             local fadeTime = notif.timer - (notif.maxTime - 1.0)
             notif.alpha = math.max(0, 1.0 - fadeTime)
         end
         
-        -- Remove notification after total time
         if notif.timer >= notif.maxTime then
             table.remove(notifications, i)
-            -- Reposition remaining notifications when one is removed
             repositionNotifications()
         end
     end
@@ -315,41 +305,33 @@ end
 function drawNotifications()
     for _, notif in ipairs(notifications) do
         if notif.isLevelUp then
-            -- Special handling for level up notifications
             local textWidth = love.graphics.getFont():getWidth(notif.text)
             local textHeight = love.graphics.getFont():getHeight()
             local padding = 20
             
-            -- Make it wider and taller
             local bgWidth = math.max(600, textWidth + padding * 4) -- Minimum 600px width
             local bgHeight = textHeight + padding * 2
             local bgX = (love.graphics.getWidth() - bgWidth) / 2
             local bgY = notif.y - padding
             
-            -- Pulsing effect
             local pulse = 1.0 + 0.1 * math.sin(notif.pulseTimer * 8)
             local currentAlpha = notif.alpha * pulse
             
-            -- Golden gradient background
             love.graphics.setColor(1, 0.8, 0, 0.9 * notif.alpha) -- Golden background
             love.graphics.rectangle("fill", bgX, bgY, bgWidth, bgHeight)
             
-            -- Bright golden border with pulse
             love.graphics.setColor(1, 1, 0, currentAlpha) -- Bright gold border
             love.graphics.setLineWidth(3)
             love.graphics.rectangle("line", bgX, bgY, bgWidth, bgHeight)
             love.graphics.setLineWidth(1) -- Reset line width
             
-            -- Inner glow effect
             love.graphics.setColor(1, 1, 1, 0.3 * notif.alpha)
             love.graphics.rectangle("fill", bgX + 2, bgY + 2, bgWidth - 4, bgHeight - 4)
             
-            -- Level up text with golden color and pulse
             love.graphics.setColor(1, 1, 1, currentAlpha)
             love.graphics.printf(notif.text, 0, notif.y, love.graphics.getWidth(), "center")
             
         else
-            -- Regular notification handling
             local textWidth = love.graphics.getFont():getWidth(notif.text)
             local textHeight = love.graphics.getFont():getHeight()
             local padding = 10
@@ -358,21 +340,18 @@ function drawNotifications()
             local bgX = (love.graphics.getWidth() - bgWidth) / 2
             
             if notif.location == "left" then
-                bgX = bgX - 100
+                bgX = bgX - 200
             elseif notif.location == "right" then
-                bgX = bgX + 100
+                bgX = bgX + 200
             end
             local bgY = notif.y - padding
             
-            -- Semi-transparent background
             love.graphics.setColor(0, 0, 0, 0.7 * notif.alpha)
             love.graphics.rectangle("fill", bgX, bgY, bgWidth, bgHeight)
             
-            -- Border
             love.graphics.setColor(1, 1, 1, notif.alpha)
             love.graphics.rectangle("line", bgX, bgY, bgWidth, bgHeight)
             
-            -- Text
             love.graphics.setColor(1, 1, 1, notif.alpha)
             if notif.location == "center" then
                 love.graphics.printf(notif.text, 0, notif.y, love.graphics.getWidth(), "center")
@@ -382,11 +361,9 @@ function drawNotifications()
         end
     end
     
-    -- Reset color
     love.graphics.setColor(1, 1, 1, 1)
 end
 
--- JSON Save/Load Functions
 function savePlayerData()
     local playerJson = json.encode_pretty(player)
     love.filesystem.write("player_save.json", playerJson)
@@ -399,10 +376,8 @@ function loadPlayerData()
         local jsonString = love.filesystem.read("player_save.json")
         print("Loading player data from JSON...")
         
-        -- Decode JSON and load into player table
         local success, loadedData = pcall(json.decode, jsonString)
         if success and loadedData then
-            -- Merge loaded data into player table
             if loadedData.inventory then
                 player.inventory.coins = loadedData.inventory.coins or 0
                 player.inventory.backpack = loadedData.inventory.backpack or {}
@@ -478,7 +453,6 @@ function equipTool(toolName)
     print("Equipped " .. toolName .. " in slot: " .. tool.slot)
 end
 
--- Equipment management functions
 function equipWeapon(weaponName)
     if not weapons[weaponName] then
         print("Weapon not found: " .. weaponName)
@@ -489,7 +463,6 @@ function equipWeapon(weaponName)
         return false
     end
     
-    -- Unequip current weapon if any
     if player.inventory.equipment.weapon ~= "" then
         print("Unequipping " .. player.inventory.equipment.weapon)
     end
@@ -510,9 +483,8 @@ function equipArmor(armorName)
     end
     
     local armor = armour[armorName]
-    local slot = armor.slot or "shield" -- Default to shield slot
+    local slot = armor.slot or "shield"
     
-    -- Unequip current armor if any
     if player.inventory.equipment[slot] ~= "" then
         print("Unequipping " .. player.inventory.equipment[slot])
     end
@@ -561,22 +533,14 @@ end
 
 function doSkill()
     if currentSkill == "woodcutting" then
-        if woodcuttingActions[currentAction] then
-            if not tools[player.inventory.tools.axe] then
-                print("You need an axe to woodcut!")
-                currentSkill = ""
-                return
-            end
-            woodcuttingActions[currentAction]()
-        else
-            print("No action defined for woodcutting: " .. currentSkill)
+        if not tools[player.inventory.tools.axe] then
+            print("You need an axe to woodcut!")
+            currentSkill = ""
+            return
         end
+        woodcuttingActions(currentAction)
     elseif currentSkill == "thieving" then
-        if thievingActions[currentAction] then
-            thievingActions[currentAction]()
-        else
-            print("No action defined for thieving: " .. currentSkill)
-        end
+        thievingActions(currentAction)
     else
         return
     end
@@ -584,7 +548,6 @@ function doSkill()
 end
 
 
--- Dynamically create equipment buttons
 local function updateEquipmentButtons()
     states.equipment.buttons = {
         {
@@ -597,7 +560,6 @@ local function updateEquipmentButtons()
         }
     }
     
-    -- Add equip buttons for available items
     local buttonY = 200
     local buttonX = 500
     for itemName, itemData in pairs(player.inventory.backpack) do
@@ -646,11 +608,9 @@ local function updateEquipmentButtons()
         end
     end
     
-    -- Add unequip buttons
     buttonX = 200
     buttonY = 200
     
-    -- Unequip tools
     for slot, toolName in pairs(player.inventory.tools) do
         if toolName ~= "" then
             table.insert(states.equipment.buttons, {
@@ -668,7 +628,6 @@ local function updateEquipmentButtons()
         end
     end
     
-    -- Unequip combat gear
     for slot, equipName in pairs(player.inventory.equipment) do
         if equipName ~= "" then
             table.insert(states.equipment.buttons, {
@@ -691,7 +650,6 @@ local function updateEquipmentButtons()
     end
 end
 
--- Menu state
 states.menu = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
@@ -725,28 +683,23 @@ states.menu = {
     }
 }
 
--- Game state
 states.game = {
-    text = function ()
-        love.graphics.setColor(1, 1, 1) -- White
-        love.graphics.print("Coins: " .. player.inventory.coins, 10, 10)
-    end,
     buttons = {
         {
             x = 100,
             y = 100,
             width = 100,
             height = 50,
-            text = "Start woodcutting",
-            action = function() currentSkill = "woodcutting" currentAction = "regular" end
+            text = "Woodcutting",
+            action = function() currentState = "woodcutting" end
         },
         {
             x = 100,
             y = 200,
             width = 100,
             height = 50,
-            text = "Start Thieving",
-            action = function() currentSkill = "thieving" currentAction = "man" end
+            text = "Thieving",
+            action = function() currentState = "thieving" end
         },
         {
             x = 100,
@@ -802,7 +755,6 @@ states.game = {
     }
 }
 
--- Settings state
 states.settings = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
@@ -840,6 +792,7 @@ states.shops = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
         love.graphics.printf("shops", 0, 100, love.graphics.getWidth(), "center")
+        
     end,
     buttons = {
         {
@@ -896,17 +849,13 @@ for shopName,shop in pairs(shops) do
     end
 end
 
--- Equipment state
 states.equipment = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
         love.graphics.printf("Equipment", 0, 50, love.graphics.getWidth(), "center")
         
-        -- Display current equipment
         local y = 100
         
-        
-        -- Tools
         love.graphics.print("Tools:", 50, y)
         y = y + 25
         for slot, toolName in pairs(player.inventory.tools) do
@@ -916,7 +865,6 @@ states.equipment = {
         end
         
         y = y + 10
-        -- Equipment
         love.graphics.print("Combat Gear:", 50, y)
         y = y + 25
         for slot, equipName in pairs(player.inventory.equipment) do
@@ -925,7 +873,6 @@ states.equipment = {
             y = y + 20
         end
         
-        -- Available items to equip
         y = y + 20
         love.graphics.print("Available Items:", 400, 100)
         local itemY = 125
@@ -940,9 +887,123 @@ states.equipment = {
     buttons = {}
 }
 
+states.woodcutting = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Woodcutting", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.print("Choose a tree to cut:", 50, 100)
+        love.graphics.print("Your woodcutting level: " .. player.skills.woodcutting, 50, 120)
+        
+        if currentSkill == "woodcutting" and currentAction ~= "" then
+            love.graphics.print("Currently cutting: " .. currentAction, 50, 140)
+        end
+    end,
+    buttons = {}
+}
+
+states.thieving = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Thieving", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.print("Choose a target to pickpocket:", 50, 100)
+        love.graphics.print("Your thieving level: " .. player.skills.thieving, 50, 120)
+        
+        if currentSkill == "thieving" and currentAction ~= "" then
+            love.graphics.print("Currently pickpocketing: " .. currentAction, 50, 140)
+        end
+    end,
+    buttons = {}
+}
+
+function checkSkillRequirement(skill, actionName)
+    local skillData = skilling[skill] and skilling[skill][actionName]
+    if not skillData then
+        return false
+    end
+    
+    return player.skills[skill] >= skillData.requirement
+end
+
+function createSkillButtons()
+    states.woodcutting.buttons = {
+        {
+            x = 400,
+            y = 400,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() currentState = "game" end
+        }
+    }
+    
+    local buttonY = 200
+    for actionName, actionData in pairs(skilling.woodcutting) do
+        table.insert(states.woodcutting.buttons, {
+            x = 100,
+            y = buttonY,
+            width = 200,
+            height = 40,
+            text = actionName .. " (Req: " .. actionData.requirement .. ")",
+            action = function()
+                if checkSkillRequirement("woodcutting", actionName) then
+                    if not tools[player.inventory.tools.axe] then
+                        print("You need an axe to woodcut!")
+                        return
+                    end
+                    currentSkill = "woodcutting"
+                    currentAction = actionName
+                    print("Started " .. actionName .. " woodcutting!")
+                else
+                    print("You need level " .. actionData.requirement .. " woodcutting!")
+                end
+            end,
+            requirement = actionData.requirement,
+            skill = "woodcutting",
+        })
+        buttonY = buttonY + 50
+    end
+    
+    states.thieving.buttons = {
+        {
+            x = 400,
+            y = 400,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() currentState = "game" end
+        }
+    }
+    
+    buttonY = 200
+    for actionName, actionData in pairs(skilling.thieving) do
+
+        table.insert(states.thieving.buttons, {
+            x = 100,
+            y = buttonY,
+            width = 200,
+            height = 40,
+            text = actionName .. " (Req: " .. actionData.requirement .. ")",
+            action = function() 
+                if checkSkillRequirement("thieving", actionName) then
+                    currentSkill = "thieving"
+                    currentAction = actionName
+                    print("Started pickpocketing " .. actionName .. "!")
+                else
+                    print("You need level " .. actionData.requirement .. " thieving!")
+                end
+            end,
+            requirement = actionData.requirement,
+            skill = "thieving",
+            
+        })
+        buttonY = buttonY + 50
+    end
+end
+
 function love.load()
     love.filesystem.setIdentity("idleRPG")
-    updateEquipmentButtons()  -- Initialize equipment buttons
+    updateEquipmentButtons()
+    createSkillButtons()  
 end
 
 function love.update(dt)
@@ -954,7 +1015,6 @@ function love.update(dt)
         end
     end
     
-    -- Update notifications
     updateNotifications(dt)
 end
 
@@ -971,13 +1031,24 @@ function love.draw()
             end
         end
     end
-    
-    -- Draw notifications on top of everything
+    if currentState ~= "menu" and currentState ~= "settings" then
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.print("Coins: " .. player.inventory.coins, 10, 10)
+    end
     drawNotifications()
 end
 
 function drawButton(button)
-    love.graphics.setColor(0.7, 0.7, 0.7) -- Light gray
+    if button.requirement ~= nil then
+        if button.requirement <= player.skills[button.skill] then
+            love.graphics.setColor(0.7, 1, 0.7) -- Light green if meets requirement
+        else
+            love.graphics.setColor(1, 0.7, 0.7) -- Light red if doesn't meet requirement
+        end
+    else
+        love.graphics.setColor(0.7, 0.7, 0.7) -- Default light gray
+    end
+    
     love.graphics.rectangle("fill", button.x, button.y, button.width, button.height)
     love.graphics.setColor(0, 0, 0) -- Black border
     love.graphics.rectangle("line", button.x, button.y, button.width, button.height)
