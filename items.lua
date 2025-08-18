@@ -10,7 +10,11 @@ local itemList = {
     ["iron"] = {
         name = "Iron",
         description = "A valuable metal for tools and weapons.",
-    }
+    },
+    ["axe"] = {
+        name = "Axe",
+        description = "A sturdy axe for chopping wood.",
+    },
 }
 
 -- Export the table by returning it

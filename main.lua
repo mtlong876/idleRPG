@@ -5,6 +5,9 @@ end
 -- Import items from items.lua
 local items = require("items")
 local levelupTable = require("levelup")
+local weapons = require("weapons")
+local shops = require("shops")
+local json = require("json")
 -- State management
 local states = {}
 local currentState = "menu"
@@ -61,7 +64,7 @@ function addItem(itemName, quantity)
     if player.inventory.backpack[itemName] then
         player.inventory.backpack[itemName].quantity = player.inventory.backpack[itemName].quantity + quantity
     else
-        player.inventory.backpack[itemName] = { item = item, quantity = quantity }
+        player.inventory.backpack[itemName] = { item = itemName, quantity = quantity }
     end
 end
 
@@ -86,6 +89,7 @@ end
 function addExperience(skill, amount)
     if player.experience[skill] then
         player.experience[skill] = player.experience[skill] + amount
+        print(skill .. player.skills[skill] .. levelupTable[player.skills[skill]])
         if player.experience[skill] >= levelupTable[player.skills[skill]] then
             player.skills[skill] = player.skills[skill] + 1
             print(skill .. " leveled up to " .. player.skills[skill])
@@ -93,6 +97,73 @@ function addExperience(skill, amount)
         print("Added " .. amount .. " experience to " .. skill .. ". Total: " .. player.experience[skill])
     else
         print("Skill not found: " .. skill)
+    end
+end
+
+-- JSON Save/Load Functions
+function savePlayerData()
+    local playerJson = json.encode_pretty(player)
+    love.filesystem.write("player_save.json", playerJson)
+    print("Player data saved to JSON!")
+    return playerJson
+end
+
+function loadPlayerData()
+    if love.filesystem.getInfo("player_save.json") then
+        local jsonString = love.filesystem.read("player_save.json")
+        print("Loading player data from JSON...")
+        
+        -- Decode JSON and load into player table
+        local success, loadedData = pcall(json.decode, jsonString)
+        if success and loadedData then
+            -- Merge loaded data into player table
+            if loadedData.inventory then
+                player.inventory.coins = loadedData.inventory.coins or 0
+                player.inventory.backpack = loadedData.inventory.backpack or {}
+            end
+            if loadedData.skills then
+                for skill, level in pairs(loadedData.skills) do
+                    player.skills[skill] = level
+                end
+            end
+            if loadedData.experience then
+                for skill, exp in pairs(loadedData.experience) do
+                    player.experience[skill] = exp
+                end
+            end
+            print("Player data loaded successfully!")
+            print("Coins: " .. player.inventory.coins)
+            return true
+        else
+            print("Error decoding JSON data: " .. (loadedData or "unknown error"))
+            return false
+        end
+    else
+        print("No save file found")
+        return false
+    end
+end
+
+function printPlayerAsJSON()
+    local playerJson = json.encode_pretty(player)
+    print("Player data as JSON:")
+    print(playerJson)
+    return playerJson
+end
+
+function purchaseItem(shopName,itemName, quantity)
+    local shop = shops[shopName]
+    if not shop or not shop.items[itemName] then
+        print("Item not available in shop: " .. itemName)
+        return
+    end
+    local cost = shop.items[itemName] * quantity
+    if player.inventory.coins >= cost then
+        updateCoins(-cost)
+        addItem(itemName, quantity)
+        print("Purchased " .. quantity .. " " .. itemName .. "(s) for " .. cost .. " coins.")
+    else
+        print("Not enough coins to purchase " .. itemName)
     end
 end
 
@@ -117,6 +188,10 @@ end
 
 -- Menu state
 states.menu = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Idle RPG - Main Menu", 0, 100, love.graphics.getWidth(), "center")
+    end,
     buttons = {
         {
             x = 300,
@@ -147,6 +222,10 @@ states.menu = {
 
 -- Game state
 states.game = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.print("Coins: " .. player.inventory.coins, 10, 10)
+    end,
     buttons = {
         {
             x = 100,
@@ -163,12 +242,56 @@ states.game = {
             height = 50,
             text = "Start Thieving",
             action = function() currentSkill = "thieving" currentAction = "man" end
+        },
+        {
+            x = 100,
+            y = 300,
+            width = 100,
+            height = 50,
+            text = "Visit Shop",
+            action = function() currentState = "shops" end
+        },
+        {
+            x = 100,
+            y = 400,
+            width = 100,
+            height = 50,
+            text = "Back to Menu",
+            action = function() currentState = "menu" end
+        },
+        {
+            x = 250,
+            y = 100,
+            width = 120,
+            height = 50,
+            text = "Save to JSON",
+            action = function() savePlayerData() end
+        },
+        {
+            x = 250,
+            y = 200,
+            width = 120,
+            height = 50,
+            text = "Print JSON",
+            action = function() printPlayerAsJSON() end
+        },
+        {
+            x = 250,
+            y = 300,
+            width = 120,
+            height = 50,
+            text = "Load from JSON",
+            action = function() loadPlayerData() end
         }
     }
 }
 
 -- Settings state
 states.settings = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Settings", 0, 100, love.graphics.getWidth(), "center")
+    end,
     buttons = {
         {
             x = 300,
@@ -197,12 +320,72 @@ states.settings = {
     }
 }
 
+states.shops = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("shops", 0, 100, love.graphics.getWidth(), "center")
+    end,
+    buttons = {
+        {
+            x = 300,
+            y = 200,
+            width = 200,
+            height = 60,
+            text = "Basic Shop",
+            action = function() currentState = "basicShop" end
+        },
+        {
+            x = 300,
+            y = 280,
+            width = 200,
+            height = 60,
+            text = "Back to Game",
+            action = function() currentState = "game" end
+        },
+    }
+}
+
+for shopName,shop in pairs(shops) do
+    states[shopName] = {
+        text = function ()
+            love.graphics.setColor(1, 1, 1) -- White
+            love.graphics.printf(shop.name, 0, 100, love.graphics.getWidth(), "center")
+            love.graphics.printf(shop.description, 0, 150, love.graphics.getWidth(), "center")
+        end,
+        buttons = {
+            {
+                x = 300,
+                y = 400,
+                width = 200,
+                height = 60,
+                text = "Back to Shops",
+                action = function() currentState = "shops" end
+            }
+        }
+    }
+    local y = 200
+    for itemName, price in pairs(shop.items) do
+        local newButton = {
+            x = 300,
+            y = y,
+            width = 200,
+            height = 40,
+            text = itemName .. ": " .. price .. " coins",
+            action = function()
+                purchaseItem(shopName, itemName, 1)
+            end
+        }
+        y= y + 50
+        table.insert(states[shopName].buttons, newButton)
+    end
+end
+
 function love.load()
-    
+    love.filesystem.setIdentity("idleRPG") 
 end
 
 function love.update(dt)
-    if currentState == "game" then
+    if currentState ~= "menu" and currentState ~= "settings" then
         timer = timer + dt
         if timer > 1 then
             timer = 0
@@ -212,28 +395,16 @@ function love.update(dt)
 end
 
 function love.draw()
-    if currentState == "menu" then
-        love.graphics.setColor(1, 1, 1) -- White
-        love.graphics.printf("Idle RPG - Main Menu", 0, 100, love.graphics.getWidth(), "center")
-        
-        for _, button in ipairs(states.menu.buttons) do
-            drawButton(button)
-        end
-        
-    elseif currentState == "game" then
-        love.graphics.setColor(1, 1, 1) -- White
-        love.graphics.print("Coins: " .. player.inventory.coins, 10, 10)
-        
-        for _, button in ipairs(states.game.buttons) do
-            drawButton(button)
-        end
-        
-    elseif currentState == "settings" then
-        love.graphics.setColor(1, 1, 1) -- White
-        love.graphics.printf("Settings", 0, 100, love.graphics.getWidth(), "center")
-        
-        for _, button in ipairs(states.settings.buttons) do
-            drawButton(button)
+    local state = states[currentState]
+    if state then
+        for name,func in pairs(state) do
+            if type(func) == "function" then
+                func()
+            elseif name == "buttons" then
+                for _, button in ipairs(func) do
+                    drawButton(button)
+                end
+            end
         end
     end
 end
