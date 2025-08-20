@@ -54,14 +54,17 @@ function woodcuttingActions(type)
     end
     if tickCount < data.requiredRoll then
         local baseStrength = math.floor((player.skills.woodcutting + tools[player.inventory.tools.axe].strength)/2)
-        local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
-        print(roll)
-        if roll ~= data.requiredRoll then
-            return
+        print("Base Strength: " .. baseStrength)
+        if baseStrength+tickCount < data.requiredRoll then
+            local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
+            print(roll)
+            if roll ~= data.requiredRoll then
+                return
+            end
         end
     end
     print("You start woodcutting...")
-    addItem(data.item, data.item_amount)
+    addItem(data.item, data.item_amount,true)
     addExperience("woodcutting", data.experience)
     tickCount = 0
 end
@@ -90,7 +93,7 @@ function thievingActions(type)
     tickCount = 0
 end
 
-function addItem(itemName, quantity)
+function addItem(itemName, quantity,notification)
     local item = items[itemName]
     if not item then
         print("Item not found: " .. itemName)
@@ -101,8 +104,9 @@ function addItem(itemName, quantity)
     else
         player.inventory.backpack[itemName] = { item = itemName, quantity = quantity }
     end
-    
-    addNotification(itemName, quantity, "center")
+    if notification  then
+        addNotification(itemName, quantity, "center")
+    end
 end
 
 function removeItem(itemName, quantity)
@@ -429,11 +433,30 @@ function purchaseItem(shopName,itemName, quantity)
     local cost = shop.items[itemName] * quantity
     if player.inventory.coins >= cost then
         updateCoins(-cost)
-        addItem(itemName, quantity)
+        addItem(itemName, quantity,true)
         print("Purchased " .. quantity .. " " .. itemName .. "(s) for " .. cost .. " coins.")
     else
         print("Not enough coins to purchase " .. itemName)
     end
+end
+
+function sellItem(itemName, quantity)
+    local item = items[itemName]
+    if not item then
+        print("Item not found: " .. itemName)
+        return
+    end
+    
+    if not player.inventory.backpack[itemName] or player.inventory.backpack[itemName].quantity < quantity then
+        print("Not enough " .. itemName .. " to sell")
+        return
+    end
+    
+    -- Sell price is typically lower than buy price (75% of item price)
+    local sellPrice = math.floor(item.price * 0.75) * quantity
+    removeItem(itemName, quantity)
+    updateCoins(sellPrice)
+    print("Sold " .. quantity .. " " .. itemName .. "(s) for " .. sellPrice .. " coins.")
 end
 
 function equipTool(toolName)
@@ -448,8 +471,10 @@ function equipTool(toolName)
     end
     if player.inventory.tools[tool.slot] then
         print("Replacing " .. player.inventory.tools[tool.slot] .. " with " .. toolName)
+        addItem(player.inventory.tools[tool.slot], 1,false)
     end
     player.inventory.tools[tool.slot] = toolName
+    removeItem(toolName, 1)
     print("Equipped " .. toolName .. " in slot: " .. tool.slot)
 end
 
@@ -497,6 +522,7 @@ end
 function unequipTool(slot)
     if player.inventory.tools[slot] ~= "" then
         local toolName = player.inventory.tools[slot]
+        addItem(toolName, 1,false)
         player.inventory.tools[slot] = ""
         print("Unequipped " .. toolName)
         return true
@@ -808,6 +834,17 @@ states.shops = {
             y = 280,
             width = 200,
             height = 60,
+            text = "Sell Items",
+            action = function() 
+                currentState = "sellShop"
+                updateSellShopButtons()  -- Update buttons when entering sell shop
+            end
+        },
+        {
+            x = 300,
+            y = 360,
+            width = 200,
+            height = 60,
             text = "Back to Game",
             action = function() currentState = "game" end
         },
@@ -846,6 +883,78 @@ for shopName,shop in pairs(shops) do
         }
         y= y + 50
         table.insert(states[shopName].buttons, newButton)
+    end
+end
+
+states.sellShop = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Sell Items", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.printf("Your coins: " .. player.inventory.coins, 0, 80, love.graphics.getWidth(), "center")
+        
+        if next(player.inventory.backpack) == nil then
+            love.graphics.printf("Your backpack is empty!", 0, 150, love.graphics.getWidth(), "center")
+        else
+            love.graphics.print("Click on items to sell them (75% of buy price):", 50, 120)
+        end
+    end,
+    buttons = {
+        {
+            x = 300,
+            y = 500,
+            width = 200,
+            height = 60,
+            text = "Back to Shops",
+            action = function() currentState = "shops" end
+        }
+    }
+}
+
+-- Dynamically add sell buttons for items in backpack
+function updateSellShopButtons()
+    -- Reset buttons except the back button
+    states.sellShop.buttons = {
+        {
+            x = 300,
+            y = 500,
+            width = 200,
+            height = 60,
+            text = "Back to Shops",
+            action = function() currentState = "shops" end
+        }
+    }
+    
+    local y = 160
+    local x = 50
+    local itemsPerRow = 3
+    local itemCount = 0
+    
+    for itemName, itemData in pairs(player.inventory.backpack) do
+        local item = items[itemName]
+        if item and itemData.quantity > 0 then
+            local sellPrice = math.floor(item.price * 0.75)
+            local newButton = {
+                x = x,
+                y = y,
+                width = 180,
+                height = 50,
+                text = itemName .. " (" .. itemData.quantity .. ")\nSell for " .. sellPrice .. " coins",
+                action = function()
+                    sellItem(itemName, 1)
+                    updateSellShopButtons()  -- Refresh buttons after selling
+                end
+            }
+            
+            table.insert(states.sellShop.buttons, newButton)
+            
+            itemCount = itemCount + 1
+            x = x + 200
+            
+            if itemCount % itemsPerRow == 0 then
+                x = 50
+                y = y + 70
+            end
+        end
     end
 end
 
