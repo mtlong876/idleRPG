@@ -1,7 +1,11 @@
+--TODO
+--Finish Combat
+--Start moving functions to seperate files
+
 if arg[2] == "debug" then
     require("lldebugger").start()
 end
-
+--config files
 local items = require("items")
 local levelupTable = require("levelup")
 local skilling = require("skilling")
@@ -9,17 +13,19 @@ local weapons = require("weapons")
 local armour = require("armour")
 local tools = require("tools")
 local shops = require("shops")
+local monsters = require("monsters")
+--json save and load file
 local json = require("json")
-
+--global variables
 local states = {}
 local currentState = "menu"
 local currentSkill = ""
 local currentAction = ""
+local currentTarget = nil
 local timer = 0
 local tickCount = 0
 local notifications = {}
 local notificationTimer = 0
-
 local player = {
     inventory = {
         coins = 0,
@@ -36,12 +42,33 @@ local player = {
     skills = {
         woodcutting = 1,
         thieving = 1,
+        defence = 1,
+        attack = 1,
     },
     experience = {
         woodcutting = 0,
         thieving = 0,
     },
+    life = {
+        max = 100,
+        current = 100,
+    },
+    defence = 1,
+    attack = 1,
+    strength = 1,
 }
+
+function tableCopy(table)
+    local copy = {}
+    for key,value in pairs(table) do
+        if type(value) == "table" then
+            copy[key] = tableCopy(value)
+        else
+            copy[key] = value
+        end
+    end
+    return copy
+end
 
 function woodcuttingActions(type)
     if tickCount < 3 then
@@ -393,6 +420,13 @@ function loadPlayerData()
                     weapon = "",
                     shield = "",
                 }
+                player.defence = loadedData.defence or 1
+                player.attack = loadedData.attack or 1
+                player.strength = loadedData.strength or 1
+                player.life = loadedData.life or {
+                    max = 100,
+                    current = 100,
+                }
             end
             if loadedData.skills then
                 for skill, level in pairs(loadedData.skills) do
@@ -489,33 +523,42 @@ function equipWeapon(weaponName)
     end
     
     if player.inventory.equipment.weapon ~= "" then
+        addItem(player.inventory.equipment.weapon, 1,false)
+        updateStats(player.inventory.equipment.weapon, false)
+        player.inventory.equipment.weapon = ""
         print("Unequipping " .. player.inventory.equipment.weapon)
     end
-    
+    removeItem(weaponName, 1)
+    updateStats(weaponName, true)
     player.inventory.equipment.weapon = weaponName
     print("Equipped " .. weaponName .. " as weapon")
     return true
 end
 
-function equipArmor(armorName)
-    if not armour[armorName] then
-        print("Armor not found: " .. armorName)
+function equiparmour(armourName)
+    print("Equipping armour: " .. armourName)
+    if not armour[armourName] then
+        print("armour not found: " .. armourName)
         return false
     end
-    if not player.inventory.backpack[armorName] then
-        print("You do not have a " .. armorName .. " in your backpack.")
+    if not player.inventory.backpack[armourName] then
+        print("You do not have a " .. armourName .. " in your backpack.")
         return false
     end
     
-    local armor = armour[armorName]
-    local slot = armor.slot or "shield"
+    local armourItem = armour[armourName]
+    local slot = armourItem.slot or "shield"
     
     if player.inventory.equipment[slot] ~= "" then
+        updateStats(player.inventory.equipment[slot], false)
+        addItem(player.inventory.equipment[slot], 1,false)
         print("Unequipping " .. player.inventory.equipment[slot])
     end
     
-    player.inventory.equipment[slot] = armorName
-    print("Equipped " .. armorName .. " in slot: " .. slot)
+    player.inventory.equipment[slot] = armourName
+    updateStats(armourName, true)
+    removeItem(armourName, 1)
+    print("Equipped " .. armourName .. " in slot: " .. slot)
     return true
 end
 
@@ -535,6 +578,8 @@ end
 function unequipWeapon()
     if player.inventory.equipment.weapon ~= "" then
         local weaponName = player.inventory.equipment.weapon
+        addItem(weaponName, 1,false)
+        updateStats(weaponName, false)
         player.inventory.equipment.weapon = ""
         print("Unequipped " .. weaponName)
         return true
@@ -544,16 +589,40 @@ function unequipWeapon()
     end
 end
 
-function unequipArmor(slot)
+function unequiparmour(slot)
     slot = slot or "shield"
     if player.inventory.equipment[slot] ~= "" then
-        local armorName = player.inventory.equipment[slot]
+        local armourName = player.inventory.equipment[slot]
+        player.defence = player.defence - armour[player.inventory.equipment[slot]].defence
+        addItem(player.inventory.equipment[slot], 1,false)
         player.inventory.equipment[slot] = ""
-        print("Unequipped " .. armorName)
+        print("Unequipped " .. armourName)
         return true
     else
-        print("No armor equipped in slot: " .. slot)
+        print("No armour equipped in slot: " .. slot)
         return false
+    end
+end
+
+function updateStats(item, equip)
+    if not items[item] then
+        print("Item not found: " .. item)
+        return
+    end
+    if equip then
+        if weapons[item] then
+            player.attack = player.attack + weapons[item].attack or 0
+            player.strength = player.strength + weapons[item].strength or 0
+        elseif armour[item] then
+            player.defence = player.defence + armour[item].defence or 0
+        end
+    else
+        if weapons[item] then
+            player.attack = player.attack - weapons[item].attack or 0
+            player.strength = player.strength - weapons[item].strength or 0
+        elseif armour[item] then
+            player.defence = player.defence - armour[item].defence or 0
+        end
     end
 end
 
@@ -561,6 +630,7 @@ function doSkill()
     if currentSkill == "woodcutting" then
         if not tools[player.inventory.tools.axe] then
             print("You need an axe to woodcut!")
+            tickCount = 0
             currentSkill = ""
             return
         end
@@ -573,6 +643,15 @@ function doSkill()
     tickCount = tickCount + 1
 end
 
+function doCombat()
+    if not monsters[currentAction] then
+        print("No monster found for action: " .. currentAction)
+    end
+    if not currentTarget then
+        currentTarget = tableCopy(monsters[currentAction])
+    end
+
+end
 
 local function updateEquipmentButtons()
     states.equipment.buttons = {
@@ -612,7 +691,7 @@ local function updateEquipmentButtons()
                     height = 30,
                     text = "Equip " .. itemName,
                     action = function() 
-                        equipArmor(itemName)
+                        equiparmour(itemName)
                         updateEquipmentButtons()
                     end
                 })
@@ -666,7 +745,7 @@ local function updateEquipmentButtons()
                     if slot == "weapon" then
                         unequipWeapon()
                     else
-                        unequipArmor(slot)
+                        unequiparmour(slot)
                     end
                     updateEquipmentButtons()
                 end
@@ -983,11 +1062,16 @@ states.equipment = {
         end
         
         y = y + 20
+        love.graphics.print("Defence: " .. player.defence, 50, y)
+        y = y + 20
+        love.graphics.print("Attack: " .. player.attack, 50, y)
+        y = y + 20
+        love.graphics.print("Strength: " .. player.strength, 50, y)
         love.graphics.print("Available Items:", 400, 100)
         local itemY = 125
         for itemName, itemData in pairs(player.inventory.backpack) do
             local item = items[itemName]
-            if item and (item.type == "weapon" or item.type == "armour" or item.type == "tool") then
+            if item then
                 love.graphics.print(itemName .. " (" .. itemData.quantity .. ")", 420, itemY)
                 itemY = itemY + 20
             end
@@ -1120,7 +1204,11 @@ function love.update(dt)
         timer = timer + dt
         if timer > 1 then
             timer = 0
-            doSkill()
+            if currentState == "combat" then
+                doCombat()
+            else
+                doSkill()
+            end
         end
     end
     

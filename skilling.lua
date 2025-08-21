@@ -66,6 +66,7 @@ skilling = {
             item_amount = 20,
         },
     },
+    ["fletching"] = {}
 }
 
 return skilling

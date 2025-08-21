@@ -7,6 +7,9 @@ shops = {
             ["stone"] = 5,
             ["iron"] = 2,
             ["axe"] = 1,
+            ["pickaxe"] = 1,
+            ["sword"] = 3,
+            ["shield"] = 4,
         },
     },
 }
