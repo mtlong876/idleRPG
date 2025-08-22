@@ -24,6 +24,7 @@ local currentAction = ""
 local currentTarget = nil
 local timer = 0
 local tickCount = 0
+local monsterTickCount = 0
 local notifications = {}
 local notificationTimer = 0
 local player = {
@@ -646,11 +647,49 @@ end
 function doCombat()
     if not monsters[currentAction] then
         print("No monster found for action: " .. currentAction)
-    end
-    if not currentTarget then
-        currentTarget = tableCopy(monsters[currentAction])
+        return
     end
 
+    if not currentTarget then
+        currentTarget = tableCopy(monsters[currentAction])
+        currentTarget.currentHealth = currentTarget.health
+        monsterTickCount = 0
+    end
+    tickCount = tickCount + 1
+    monsterTickCount = monsterTickCount + 1
+    local playerWeapon = weapons[player.inventory.equipment.weapon]
+    if not playerWeapon or playerWeapon == "" then
+        print("You need a weapon equipped to fight!")
+        return
+    end
+    if tickCount >= playerWeapon.speed then
+        local attackRoll = math.random(0, player.attack + player.skills.attack)
+        if attackRoll > currentTarget.defense then
+            local damageRoll = math.random(1, player.strength + math.floor(player.skills.attack/4))
+            currentTarget.health = currentTarget.health - damageRoll
+            print("You hit the " .. currentAction .. " for " .. damageRoll .. " damage!")
+        else
+            print("You missed the " .. currentAction .. "!")
+        end
+        tickCount = 0
+    end
+    if monsterTickCount >= currentTarget.speed then
+        local monsterAttackRoll = math.random(0, currentTarget.attack)
+        if monsterAttackRoll > player.defence then
+            local monsterDamageRoll = math.random(1, currentTarget.strength + math.floor(currentTarget.attack/4))
+            player.life.current = player.life.current - monsterDamageRoll
+            print("The " .. currentAction .. " hits you for " .. monsterDamageRoll .. " damage!")
+        else
+            print("The " .. currentAction .. " missed you!")
+        end
+        monsterTickCount = 0
+    end
+    if currentTarget.health <= 0 then
+        print("You defeated the " .. currentAction .. "!")
+        currentTarget = nil
+        monsterTickCount = 0
+        tickCount = 0
+    end
 end
 
 local function updateEquipmentButtons()
@@ -805,6 +844,14 @@ states.game = {
             height = 50,
             text = "Thieving",
             action = function() currentState = "thieving" end
+        },
+        {
+            x = 100,
+            y = 150,
+            width = 100,
+            height = 50,
+            text = "Combat",
+            action = function() currentState = "combat" end
         },
         {
             x = 100,
@@ -1107,6 +1154,51 @@ states.thieving = {
     end,
     buttons = {}
 }
+
+states.combat = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Combat", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.print("Choose a monster to fight:", 50, 100)
+        love.graphics.print("Your attack level: " .. player.skills.attack, 50, 120)
+        love.graphics.print("Your defence level: " .. player.skills.defence, 50, 140)
+        love.graphics.print("Health: " .. player.life.current .. "/" .. player.life.max, 50, 160)
+        
+        if currentTarget then
+            love.graphics.print("Fighting: " .. currentTarget.name, 50, 190)
+            love.graphics.print("Monster Health: " .. currentTarget.currentHealth .. "/" .. currentTarget.health, 50, 210)
+        end
+    end,
+    buttons = {
+        {
+            x = 400,
+            y = 400,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() 
+                currentState = "game"
+            end
+        }
+    }
+}
+
+-- Add monster buttons to combat state
+local combatButtonY = 250
+for monsterName, monsterData in pairs(monsters) do
+    table.insert(states.combat.buttons, {
+        x = 100,
+        y = combatButtonY,
+        width = 200,
+        height = 40,
+        text = "Fight " .. monsterData.name,
+        action = function()
+            currentSkill = "combat"
+            currentAction = monsterName
+        end
+    })
+    combatButtonY = combatButtonY + 50
+end
 
 function checkSkillRequirement(skill, actionName)
     local skillData = skilling[skill] and skilling[skill][actionName]
