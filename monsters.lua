@@ -2,15 +2,15 @@ local monsters = {
     ["goblin"] = {
         name = "Goblin",
         description = "A small, green creature known for its mischief.",
-        health = 30,
-        attack = 15,
-        defense = 10,
-        strength = 5,
+        health = 5,
+        attack = 1,
+        defense = 1,
+        strength = 1,
         speed = 3,
         experience = 10,
         loot = {
             items = {
-                ["wood"] = { quantity = 2, weight = 5},
+                ["wood"] = { quantity = 2, weight = 95},
             },
             lootTable = {}
         },

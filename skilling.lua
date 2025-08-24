@@ -66,7 +66,23 @@ skilling = {
             item_amount = 20,
         },
     },
-    ["fletching"] = {}
+    ["fletching"] = {},
+    ["mining"] = {
+        ["stone"] = {
+            requirement = 1,
+            requiredRoll = 15,
+            experience = 1500,
+            item = "stone",
+            item_amount = 1,
+        },
+        ["iron"] = {
+            requirement = 15,
+            requiredRoll = 30,
+            experience = 30,
+            item = "iron",
+            item_amount = 1,
+        },
+    },
 }
 
 return skilling

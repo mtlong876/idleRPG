@@ -42,13 +42,21 @@ local player = {
     },
     skills = {
         woodcutting = 1,
+        mining = 1,
         thieving = 1,
         defence = 1,
         attack = 1,
+        strength = 1,
+        life = 10,
     },
     experience = {
         woodcutting = 0,
+        mining = 0,
         thieving = 0,
+        attack = 0,
+        strength = 0,
+        defence = 0,
+        life = 612,
     },
     life = {
         max = 100,
@@ -97,6 +105,31 @@ function woodcuttingActions(type)
     tickCount = 0
 end
 
+function miningActions(type)
+    if tickCount < 3 then
+        return
+    end
+    local data = skilling["mining"][type]
+    if not data then
+        print("No mining action defined for type: " .. type)
+        return
+    end
+    if tickCount < data.requiredRoll then
+        local baseStrength = math.floor((player.skills.mining + tools[player.inventory.tools.pickaxe].strength)/2)
+        print("Base Strength: " .. baseStrength)
+        if baseStrength+tickCount < data.requiredRoll then
+            local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
+            print(roll)
+            if roll ~= data.requiredRoll then
+                return
+            end
+        end
+    end
+    print("You start mining...")
+    addItem(data.item, data.item_amount,true)
+    addExperience("mining", data.experience)
+    tickCount = 0
+end
 
 function thievingActions(type) 
     if tickCount < 3 then
@@ -165,6 +198,10 @@ function addExperience(skill, amount)
         player.experience[skill] = player.experience[skill] + amount
         if player.experience[skill] >= levelupTable[player.skills[skill]] then
             player.skills[skill] = player.skills[skill] + 1
+            if skill == "life" then
+                player.life.max = player.life.max + 10
+                player.life.current = player.life.max
+            end
             print(skill .. " leveled up to " .. player.skills[skill])
             addLevelUpNotification(skill, player.skills[skill])
         end
@@ -638,6 +675,14 @@ function doSkill()
         woodcuttingActions(currentAction)
     elseif currentSkill == "thieving" then
         thievingActions(currentAction)
+    elseif currentSkill == "mining" then
+        if not tools[player.inventory.tools.pickaxe] then
+            print("You need a pickaxe to mine!")
+            tickCount = 0
+            currentSkill = ""
+            return
+        end
+        miningActions(currentAction)
     else
         return
     end
@@ -646,10 +691,8 @@ end
 
 function doCombat()
     if not monsters[currentAction] then
-        print("No monster found for action: " .. currentAction)
         return
     end
-
     if not currentTarget then
         currentTarget = tableCopy(monsters[currentAction])
         currentTarget.currentHealth = currentTarget.health
@@ -664,9 +707,11 @@ function doCombat()
     end
     if tickCount >= playerWeapon.speed then
         local attackRoll = math.random(0, player.attack + player.skills.attack)
-        if attackRoll > currentTarget.defense then
-            local damageRoll = math.random(1, player.strength + math.floor(player.skills.attack/4))
-            currentTarget.health = currentTarget.health - damageRoll
+        local luckRoll = math.random(1, 10)
+        if attackRoll > currentTarget.defense or luckRoll == 10 then
+            local damageRoll = math.random(1, player.strength + math.floor(player.skills.strength/4))
+            currentTarget.currentHealth = currentTarget.currentHealth - damageRoll
+            addExperience("attack", damageRoll)
             print("You hit the " .. currentAction .. " for " .. damageRoll .. " damage!")
         else
             print("You missed the " .. currentAction .. "!")
@@ -675,17 +720,30 @@ function doCombat()
     end
     if monsterTickCount >= currentTarget.speed then
         local monsterAttackRoll = math.random(0, currentTarget.attack)
-        if monsterAttackRoll > player.defence then
+        local monsterLuckRoll = math.random(1, 10)
+        if monsterAttackRoll > player.defence or monsterLuckRoll == 10 then
             local monsterDamageRoll = math.random(1, currentTarget.strength + math.floor(currentTarget.attack/4))
             player.life.current = player.life.current - monsterDamageRoll
+            addExperience("defence", monsterDamageRoll)
             print("The " .. currentAction .. " hits you for " .. monsterDamageRoll .. " damage!")
         else
             print("The " .. currentAction .. " missed you!")
         end
         monsterTickCount = 0
     end
-    if currentTarget.health <= 0 then
+    if currentTarget.currentHealth <= 0 then
         print("You defeated the " .. currentAction .. "!")
+        if currentTarget.loot and currentTarget.loot.lootTable then
+            local lootRoll = math.random(1, #currentTarget.loot.lootTable)
+            local lootItem = currentTarget.loot.lootTable[lootRoll]
+            if lootItem then
+                addItem(lootItem.item, lootItem.quantity,true)
+                print("You looted " .. lootItem.quantity .. " " .. lootItem.item .. "(s)!")
+            else
+                print("No loot dropped.")
+            end
+        end
+        addExperience("strength", currentTarget.health)
         currentTarget = nil
         monsterTickCount = 0
         tickCount = 0
@@ -844,6 +902,14 @@ states.game = {
             height = 50,
             text = "Thieving",
             action = function() currentState = "thieving" end
+        },
+        {
+            x = 100,
+            y = 250,
+            width = 100,
+            height = 50,
+            text = "Mining",
+            action = function() currentState = "mining" end
         },
         {
             x = 100,
@@ -1155,6 +1221,20 @@ states.thieving = {
     buttons = {}
 }
 
+states.mining = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Mining", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.print("Choose a resource to mine:", 50, 100)
+        love.graphics.print("Your mining level: " .. player.skills.mining, 50, 120)
+        
+        if currentSkill == "mining" and currentAction ~= "" then
+            love.graphics.print("Currently mining: " .. currentAction, 50, 140)
+        end
+    end,
+    buttons = {}
+}
+
 states.combat = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
@@ -1283,10 +1363,49 @@ function createSkillButtons()
         })
         buttonY = buttonY + 50
     end
+    
+    states.mining.buttons = {
+        {
+            x = 400,
+            y = 400,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() currentState = "game" end
+        }
+    }
+    
+    buttonY = 200
+    for actionName, actionData in pairs(skilling.mining) do
+        table.insert(states.mining.buttons, {
+            x = 100,
+            y = buttonY,
+            width = 200,
+            height = 40,
+            text = actionName .. " (Req: " .. actionData.requirement .. ")",
+            action = function() 
+                if checkSkillRequirement("mining", actionName) then
+                    if not tools[player.inventory.tools.pickaxe] then
+                        print("You need a pickaxe to mine!")
+                        return
+                    end
+                    currentSkill = "mining"
+                    currentAction = actionName
+                    print("Started mining " .. actionName .. "!")
+                else
+                    print("You need level " .. actionData.requirement .. " mining!")
+                end
+            end,
+            requirement = actionData.requirement,
+            skill = "mining",
+        })
+        buttonY = buttonY + 50
+    end
 end
 
 function love.load()
     love.filesystem.setIdentity("idleRPG")
+    loadPlayerData()
     updateEquipmentButtons()
     createSkillButtons()  
 end
