@@ -5,6 +5,12 @@ armour = {
         defence = 10,
         slot = "shield",
     },
+    ["wooden shield"] = {
+        name = "Wooden Shield",
+        description = "A sturdy wooden shield.",
+        defence = 15,
+        slot = "shield",
+    },
 }
 
 return armour

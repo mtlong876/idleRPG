@@ -65,6 +65,48 @@ local itemList = {
         price = 30,
         type = "resource",
     },
+    ["stone sword"] = {
+        name = "Stone Sword",
+        description = "A sword made from stone, better than wood.",
+        price = 50,
+        type = "weapon",
+    },
+    ["iron sword"] = {
+        name = "Iron Sword",
+        description = "A sword forged from iron, strong and reliable.",
+        price = 100,
+        type = "weapon",
+    },
+    ["wooden shield"] = {
+        name = "Wooden Shield",
+        description = "A shield made from wood, offers basic protection.",
+        price = 40,
+        type = "armour",
+    },
+    ["stone axe"] = {
+        name = "Stone Axe",
+        description = "An axe made from stone, more durable than wood.",
+        price = 30,
+        type = "tool",
+    },
+    ["iron axe"] = {
+        name = "Iron Axe",
+        description = "An axe forged from iron, very durable.",
+        price = 60,
+        type = "tool",
+    },
+    ["stone pickaxe"] = {
+        name = "Stone Pickaxe",
+        description = "A pickaxe made from stone, better for mining.",
+        price = 25,
+        type = "tool",
+    },
+    ["iron pickaxe"] = {
+        name = "Iron Pickaxe",
+        description = "A pickaxe forged from iron, excellent for mining.",
+        price = 55,
+        type = "tool",
+    },
 }
 
 -- Export the table by returning it

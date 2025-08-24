@@ -1,5 +1,4 @@
 --TODO
---Finish Combat
 --Start moving functions to seperate files
 
 if arg[2] == "debug" then
@@ -14,6 +13,7 @@ local armour = require("armour")
 local tools = require("tools")
 local shops = require("shops")
 local monsters = require("monsters")
+local recipies = require("recipies")
 --json save and load file
 local json = require("json")
 --global variables
@@ -531,6 +531,43 @@ function sellItem(itemName, quantity)
     print("Sold " .. quantity .. " " .. itemName .. "(s) for " .. sellPrice .. " coins.")
 end
 
+function canCraft(recipeName)
+    local recipe = recipies[recipeName]
+    if not recipe then
+        return false
+    end
+    
+    for ingredientName, requiredAmount in pairs(recipe.ingredients) do
+        if not player.inventory.backpack[ingredientName] or 
+           player.inventory.backpack[ingredientName].quantity < requiredAmount then
+            return false
+        end
+    end
+    return true
+end
+
+function craftItem(recipeName)
+    local recipe = recipies[recipeName]
+    if not recipe then
+        print("Recipe not found: " .. recipeName)
+        return
+    end
+    
+    if not canCraft(recipeName) then
+        print("Not enough materials to craft " .. recipeName)
+        return
+    end
+    
+    for ingredientName, requiredAmount in pairs(recipe.ingredients) do
+        removeItem(ingredientName, requiredAmount)
+    end
+    
+    addItem(recipe.result, 1,true)
+    print("Successfully crafted " .. recipe.result .. "!")
+    
+    updateCraftingButtons()
+end
+
 function equipTool(toolName)
     local tool = tools[toolName]
     if not tool then
@@ -929,6 +966,17 @@ states.game = {
         },
         {
             x = 100,
+            y = 350,
+            width = 100,
+            height = 50,
+            text = "Crafting",
+            action = function() 
+                currentState = "crafting"
+                updateCraftingButtons()
+            end
+        },
+        {
+            x = 100,
             y = 400,
             width = 100,
             height = 50,
@@ -1029,7 +1077,7 @@ states.shops = {
             text = "Sell Items",
             action = function() 
                 currentState = "sellShop"
-                updateSellShopButtons()  -- Update buttons when entering sell shop
+                updateSellShopButtons()
             end
         },
         {
@@ -1102,9 +1150,7 @@ states.sellShop = {
     }
 }
 
--- Dynamically add sell buttons for items in backpack
 function updateSellShopButtons()
-    -- Reset buttons except the back button
     states.sellShop.buttons = {
         {
             x = 300,
@@ -1133,7 +1179,7 @@ function updateSellShopButtons()
                 text = itemName .. " (" .. itemData.quantity .. ")\nSell for " .. sellPrice .. " coins",
                 action = function()
                     sellItem(itemName, 1)
-                    updateSellShopButtons()  -- Refresh buttons after selling
+                    updateSellShopButtons()
                 end
             }
             
@@ -1146,6 +1192,56 @@ function updateSellShopButtons()
                 x = 50
                 y = y + 70
             end
+        end
+    end
+end
+
+function updateCraftingButtons()
+    states.crafting.buttons = {
+        {
+            x = 400,
+            y = 500,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() currentState = "game" end
+        }
+    }
+    
+    local y = 160
+    local x = 50
+    local itemsPerRow = 2
+    local itemCount = 0
+    
+    for recipeName, recipe in pairs(recipies) do
+        local ingredientsText = ""
+        for ingredientName, amount in pairs(recipe.ingredients) do
+            if ingredientsText ~= "" then
+                ingredientsText = ingredientsText .. "\n"
+            end
+            ingredientsText = ingredientsText .. ingredientName .. ": " .. amount
+        end
+        
+        local newButton = {
+            x = x,
+            y = y,
+            width = 250,
+            height = 80,
+            text = "Craft " .. recipe.result .. "\n" .. ingredientsText,
+            action = function()
+                craftItem(recipeName)
+            end,
+            canCraft = canCraft(recipeName)
+        }
+        
+        table.insert(states.crafting.buttons, newButton)
+        
+        itemCount = itemCount + 1
+        x = x + 270
+        
+        if itemCount % itemsPerRow == 0 then
+            x = 50
+            y = y + 100
         end
     end
 end
@@ -1235,6 +1331,16 @@ states.mining = {
     buttons = {}
 }
 
+states.crafting = {
+    text = function ()
+        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.printf("Crafting", 0, 50, love.graphics.getWidth(), "center")
+        love.graphics.print("Choose a recipe to craft:", 50, 100)
+        love.graphics.printf("Your coins: " .. player.inventory.coins, 0, 120, love.graphics.getWidth(), "center")
+    end,
+    buttons = {}
+}
+
 states.combat = {
     text = function ()
         love.graphics.setColor(1, 1, 1) -- White
@@ -1263,7 +1369,6 @@ states.combat = {
     }
 }
 
--- Add monster buttons to combat state
 local combatButtonY = 250
 for monsterName, monsterData in pairs(monsters) do
     table.insert(states.combat.buttons, {
@@ -1447,8 +1552,21 @@ function love.draw()
 end
 
 function drawButton(button)
+    -- Set button color based on requirements or crafting availability
     if button.requirement ~= nil then
         if button.requirement <= player.skills[button.skill] then
+            love.graphics.setColor(0.7, 1, 0.7) -- Light green if meets requirement
+        else
+            love.graphics.setColor(1, 0.7, 0.7) -- Light red if doesn't meet requirement
+        end
+    elseif button.canCraft ~= nil then
+        if button.canCraft then
+            love.graphics.setColor(0.7, 1, 0.7) -- Light green if can craft
+        else
+            love.graphics.setColor(1, 0.7, 0.7) -- Light red if can't craft
+        end
+    elseif button.meetsRequirement ~= nil then
+        if button.meetsRequirement then
             love.graphics.setColor(0.7, 1, 0.7) -- Light green if meets requirement
         else
             love.graphics.setColor(1, 0.7, 0.7) -- Light red if doesn't meet requirement
