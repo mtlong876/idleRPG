@@ -196,7 +196,7 @@ end
 function addExperience(skill, amount)
     if player.experience[skill] then
         player.experience[skill] = player.experience[skill] + amount
-        if player.experience[skill] >= levelupTable[player.skills[skill]] then
+        while player.experience[skill] >= levelupTable[player.skills[skill]] do
             player.skills[skill] = player.skills[skill] + 1
             if skill == "life" then
                 player.life.max = player.life.max + 10
@@ -1364,6 +1364,8 @@ states.combat = {
             text = "Back to Game",
             action = function() 
                 currentState = "game"
+                currentAction = ""
+                currentSkill = ""
             end
         }
     }
@@ -1547,6 +1549,9 @@ function love.draw()
     if currentState ~= "menu" and currentState ~= "settings" then
         love.graphics.setColor(1, 1, 1) -- White
         love.graphics.print("Coins: " .. player.inventory.coins, 10, 10)
+        if currentSkill ~= "" then
+            love.graphics.print("Current Skill: " .. currentSkill .. " (" .. currentAction .. ")", 10, 30)
+        end
     end
     drawNotifications()
 end
