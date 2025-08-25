@@ -1,5 +1,6 @@
 --TODO
 --Start moving functions to seperate files
+--Fix chat messages
 
 if arg[2] == "debug" then
     require("lldebugger").start()
@@ -27,6 +28,28 @@ local tickCount = 0
 local monsterTickCount = 0
 local notifications = {}
 local notificationTimer = 0
+local chatMessages = {}
+local maxChatMessages = 50
+local chatScroll = 0
+local pages = {
+    shop = {
+        pages = {},
+        perPage = 4
+    },
+    skill = {
+        pages = {},
+        perPage = 4
+    },
+    crafting = {
+        pages = 1,
+        perPage = 3
+    },
+    combat = {
+        pages = 1,
+        perPage = 4
+    }
+}
+
 local player = {
     inventory = {
         coins = 0,
@@ -79,6 +102,14 @@ function tableCopy(table)
     return copy
 end
 
+function addChatMessage(message)
+    table.insert(chatMessages, message)
+    if #chatMessages > maxChatMessages then
+        table.remove(chatMessages, 1)
+    end
+    chatScroll = 0
+end
+
 function woodcuttingActions(type)
     if tickCount < 3 then
         return
@@ -90,16 +121,14 @@ function woodcuttingActions(type)
     end
     if tickCount < data.requiredRoll then
         local baseStrength = math.floor((player.skills.woodcutting + tools[player.inventory.tools.axe].strength)/2)
-        print("Base Strength: " .. baseStrength)
         if baseStrength+tickCount < data.requiredRoll then
             local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
-            print(roll)
             if roll ~= data.requiredRoll then
                 return
             end
         end
     end
-    print("You start woodcutting...")
+    addChatMessage("You start woodcutting " .. data.item .. "...")
     addItem(data.item, data.item_amount,true)
     addExperience("woodcutting", data.experience)
     tickCount = 0
@@ -116,16 +145,14 @@ function miningActions(type)
     end
     if tickCount < data.requiredRoll then
         local baseStrength = math.floor((player.skills.mining + tools[player.inventory.tools.pickaxe].strength)/2)
-        print("Base Strength: " .. baseStrength)
         if baseStrength+tickCount < data.requiredRoll then
             local roll = math.random(baseStrength+ tickCount, data.requiredRoll)
-            print(roll)
             if roll ~= data.requiredRoll then
                 return
             end
         end
     end
-    print("You start mining...")
+    addChatMessage("You start mining " .. data.item .. "...")
     addItem(data.item, data.item_amount,true)
     addExperience("mining", data.experience)
     tickCount = 0
@@ -143,12 +170,11 @@ function thievingActions(type)
     if tickCount < data.requiredRoll then
         local baseStrength = math.floor(player.skills.thieving)
         local roll = math.random(baseStrength + tickCount, data.requiredRoll)
-        print(roll)
         if roll ~= data.requiredRoll then
             return
         end
     end
-    print("You start thieving...")
+    addChatMessage("You start thieving " .. type .. "...")
     updateCoins(data.item_amount)
     addExperience("thieving", data.experience)
     tickCount = 0
@@ -203,6 +229,7 @@ function addExperience(skill, amount)
                 player.life.current = player.life.max
             end
             print(skill .. " leveled up to " .. player.skills[skill])
+            addChatMessage(skill .. " leveled up to " .. player.skills[skill])
             addLevelUpNotification(skill, player.skills[skill])
         end
         addNotification(skill .. " experience", amount, "right")
@@ -270,7 +297,7 @@ function addNotification(itemName, quantity, location)
 end
 
 function addLevelUpNotification(skill, level)
-    local skillName = string.upper(string.sub(skill, 1, 1)) .. string.sub(skill, 2) -- Capitalize first letter
+    local skillName = string.upper(string.sub(skill, 1, 1)) .. string.sub(skill, 2)
     
     local startY, targetY = calculateNotificationPosition(true, "center")
     
@@ -378,7 +405,7 @@ function drawNotifications()
             local textHeight = love.graphics.getFont():getHeight()
             local padding = 20
             
-            local bgWidth = math.max(600, textWidth + padding * 4) -- Minimum 600px width
+            local bgWidth = math.max(600, textWidth + padding * 4)
             local bgHeight = textHeight + padding * 2
             local bgX = (love.graphics.getWidth() - bgWidth) / 2
             local bgY = notif.y - padding
@@ -392,7 +419,7 @@ function drawNotifications()
             love.graphics.setColor(1, 1, 0, currentAlpha) -- Bright gold border
             love.graphics.setLineWidth(3)
             love.graphics.rectangle("line", bgX, bgY, bgWidth, bgHeight)
-            love.graphics.setLineWidth(1) -- Reset line width
+            love.graphics.setLineWidth(1)
             
             love.graphics.setColor(1, 1, 1, 0.3 * notif.alpha)
             love.graphics.rectangle("fill", bgX + 2, bgY + 2, bgWidth - 4, bgHeight - 4)
@@ -507,6 +534,7 @@ function purchaseItem(shopName,itemName, quantity)
         updateCoins(-cost)
         addItem(itemName, quantity,true)
         print("Purchased " .. quantity .. " " .. itemName .. "(s) for " .. cost .. " coins.")
+        addChatMessage("Purchased " .. quantity .. " " .. itemName .. "(s) for " .. cost .. " coins.")
     else
         print("Not enough coins to purchase " .. itemName)
     end
@@ -524,11 +552,11 @@ function sellItem(itemName, quantity)
         return
     end
     
-    -- Sell price is typically lower than buy price (75% of item price)
     local sellPrice = math.floor(item.price * 0.75) * quantity
     removeItem(itemName, quantity)
     updateCoins(sellPrice)
     print("Sold " .. quantity .. " " .. itemName .. "(s) for " .. sellPrice .. " coins.")
+    addChatMessage("Sold " .. quantity .. " " .. itemName .. "(s) for " .. sellPrice .. " coins.")
 end
 
 function canCraft(recipeName)
@@ -564,6 +592,7 @@ function craftItem(recipeName)
     
     addItem(recipe.result, 1,true)
     print("Successfully crafted " .. recipe.result .. "!")
+    addChatMessage("Successfully crafted " .. recipe.result .. "!")
     
     updateCraftingButtons()
 end
@@ -585,6 +614,7 @@ function equipTool(toolName)
     player.inventory.tools[tool.slot] = toolName
     removeItem(toolName, 1)
     print("Equipped " .. toolName .. " in slot: " .. tool.slot)
+    addChatMessage("Equipped " .. toolName .. " in slot: " .. tool.slot)
 end
 
 function equipWeapon(weaponName)
@@ -607,6 +637,7 @@ function equipWeapon(weaponName)
     updateStats(weaponName, true)
     player.inventory.equipment.weapon = weaponName
     print("Equipped " .. weaponName .. " as weapon")
+    addChatMessage("Equipped " .. weaponName .. " as weapon")
     return true
 end
 
@@ -930,7 +961,11 @@ states.game = {
             width = 100,
             height = 50,
             text = "Woodcutting",
-            action = function() currentState = "woodcutting" end
+            action = function() 
+                currentState = "woodcutting"
+                pages.skill.pages.woodcutting = 1
+                updateSkillButtons("woodcutting")
+            end
         },
         {
             x = 100,
@@ -938,7 +973,11 @@ states.game = {
             width = 100,
             height = 50,
             text = "Thieving",
-            action = function() currentState = "thieving" end
+            action = function() 
+                currentState = "thieving"
+                pages.skill.pages.thieving = 1
+                updateSkillButtons("thieving")
+            end
         },
         {
             x = 100,
@@ -946,7 +985,11 @@ states.game = {
             width = 100,
             height = 50,
             text = "Mining",
-            action = function() currentState = "mining" end
+            action = function() 
+                currentState = "mining"
+                pages.skill.pages.mining = 1
+                updateSkillButtons("mining")
+            end
         },
         {
             x = 100,
@@ -954,7 +997,11 @@ states.game = {
             width = 100,
             height = 50,
             text = "Combat",
-            action = function() currentState = "combat" end
+            action = function() 
+                currentState = "combat"
+                pages.combat.pages = 1
+                updateCombatButtons()
+            end
         },
         {
             x = 100,
@@ -972,6 +1019,7 @@ states.game = {
             text = "Crafting",
             action = function() 
                 currentState = "crafting"
+                pages.crafting.pages = 1
                 updateCraftingButtons()
             end
         },
@@ -1067,7 +1115,11 @@ states.shops = {
             width = 200,
             height = 60,
             text = "Basic Shop",
-            action = function() currentState = "basicShop" end
+            action = function() 
+                currentState = "basicShop"
+                pages.shop.pages["basicShop"] = 1
+                updateShopButtons("basicShop")
+            end
         },
         {
             x = 300,
@@ -1092,38 +1144,103 @@ states.shops = {
 }
 
 for shopName,shop in pairs(shops) do
+    pages.shop.pages[shopName] = 1
+    
     states[shopName] = {
         text = function ()
             love.graphics.setColor(1, 1, 1) -- White
             love.graphics.printf(shop.name, 0, 100, love.graphics.getWidth(), "center")
             love.graphics.printf(shop.description, 0, 150, love.graphics.getWidth(), "center")
+            
+            -- Show page info
+            local totalItems = 0
+            for _ in pairs(shop.items) do totalItems = totalItems + 1 end
+            local totalPages = math.ceil(totalItems / pages.shop.perPage)
+            if totalPages > 1 then
+                love.graphics.printf("Page " .. pages.shop.pages[shopName] .. " of " .. totalPages, 0, 180, love.graphics.getWidth(), "center")
+            end
         end,
-        buttons = {
-            {
-                x = 300,
-                y = 400,
-                width = 200,
-                height = 60,
-                text = "Back to Shops",
-                action = function() currentState = "shops" end
-            }
+        buttons = {}
+    }
+end
+
+function updateShopButtons(shopName)
+    local shop = shops[shopName]
+    if not shop then return end
+    
+    states[shopName].buttons = {
+        {
+            x = 300,
+            y = 500,
+            width = 200,
+            height = 60,
+            text = "Back to Shops",
+            action = function() currentState = "shops" end
         }
     }
-    local y = 200
+    
+    local itemsArray = {}
     for itemName, price in pairs(shop.items) do
+        table.insert(itemsArray, {name = itemName, price = price})
+    end
+    
+    local totalItems = #itemsArray
+    local totalPages = math.ceil(totalItems / pages.shop.perPage)
+    local currentPage = pages.shop.pages[shopName]
+    
+    local startIndex = (currentPage - 1) * pages.shop.perPage + 1
+    local endIndex = math.min(startIndex + pages.shop.perPage - 1, totalItems)
+    
+    local y = 200
+    for i = startIndex, endIndex do
+        local item = itemsArray[i]
         local newButton = {
             x = 300,
             y = y,
             width = 200,
             height = 40,
-            text = itemName .. ": " .. price .. " coins",
+            text = item.name .. ": " .. item.price .. " coins",
             action = function()
-                purchaseItem(shopName, itemName, 1)
+                purchaseItem(shopName, item.name, 1)
             end
         }
-        y= y + 50
+        y = y + 50
         table.insert(states[shopName].buttons, newButton)
     end
+    
+    if totalPages > 1 then
+        if currentPage > 1 then
+            table.insert(states[shopName].buttons, {
+                x = 100,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Previous",
+                action = function()
+                    pages.shop.pages[shopName] = pages.shop.pages[shopName] - 1
+                    updateShopButtons(shopName)
+                end
+            })
+        end
+        
+        if currentPage < totalPages then
+            table.insert(states[shopName].buttons, {
+                x = 520,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Next",
+                action = function()
+                    pages.shop.pages[shopName] = pages.shop.pages[shopName] + 1
+                    updateShopButtons(shopName)
+                end
+            })
+        end
+    end
+end
+
+for shopName, _ in pairs(shops) do
+    updateShopButtons(shopName)
 end
 
 states.sellShop = {
@@ -1208,14 +1325,24 @@ function updateCraftingButtons()
         }
     }
     
-    local y = 160
-    local x = 50
-    local itemsPerRow = 2
-    local itemCount = 0
-    
+    local recipesArray = {}
     for recipeName, recipe in pairs(recipies) do
+        table.insert(recipesArray, {name = recipeName, data = recipe})
+    end
+    
+    local totalRecipes = #recipesArray
+    local totalPages = math.ceil(totalRecipes / pages.crafting.perPage)
+    
+    local startIndex = (pages.crafting.pages - 1) * pages.crafting.perPage + 1
+    local endIndex = math.min(startIndex + pages.crafting.perPage - 1, totalRecipes)
+    
+    local y = 170
+    local x = 50
+    
+    for i = startIndex, endIndex do
+        local recipe = recipesArray[i]
         local ingredientsText = ""
-        for ingredientName, amount in pairs(recipe.ingredients) do
+        for ingredientName, amount in pairs(recipe.data.ingredients) do
             if ingredientsText ~= "" then
                 ingredientsText = ingredientsText .. "\n"
             end
@@ -1227,21 +1354,124 @@ function updateCraftingButtons()
             y = y,
             width = 250,
             height = 80,
-            text = "Craft " .. recipe.result .. "\n" .. ingredientsText,
+            text = "Craft " .. recipe.data.result .. "\n" .. ingredientsText,
             action = function()
-                craftItem(recipeName)
+                craftItem(recipe.name)
             end,
-            canCraft = canCraft(recipeName)
+            canCraft = canCraft(recipe.name)
         }
         
         table.insert(states.crafting.buttons, newButton)
         
-        itemCount = itemCount + 1
         x = x + 270
-        
-        if itemCount % itemsPerRow == 0 then
+        if (i - startIndex + 1) % 2 == 0 then
             x = 50
-            y = y + 100
+            y = y + 90
+        end
+    end
+    
+    if totalPages > 1 then
+        if pages.crafting.pages > 1 then
+            table.insert(states.crafting.buttons, {
+                x = 100,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Previous",
+                action = function()
+                    pages.crafting.pages = pages.crafting.pages - 1
+                    updateCraftingButtons()
+                end
+            })
+        end
+        
+        if pages.crafting.pages < totalPages then
+            table.insert(states.crafting.buttons, {
+                x = 300,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Next",
+                action = function()
+                    pages.crafting.pages = pages.crafting.pages + 1
+                    updateCraftingButtons()
+                end
+            })
+        end
+    end
+end
+
+function updateCombatButtons()
+    states.combat.buttons = {
+        {
+            x = 400,
+            y = 500,
+            width = 120,
+            height = 50,
+            text = "Back to Game",
+            action = function() 
+                currentState = "game"
+                currentAction = ""
+                currentSkill = ""
+            end
+        }
+    }
+    
+    local monstersArray = {}
+    for monsterName, monsterData in pairs(monsters) do
+        table.insert(monstersArray, {name = monsterName, data = monsterData})
+    end
+    
+    local totalMonsters = #monstersArray
+    local totalPages = math.ceil(totalMonsters / pages.combat.perPage)
+    
+    local startIndex = (pages.combat.pages - 1) * pages.combat.perPage + 1
+    local endIndex = math.min(startIndex + pages.combat.perPage - 1, totalMonsters)
+    
+    local buttonY = 260
+    for i = startIndex, endIndex do
+        local monster = monstersArray[i]
+        table.insert(states.combat.buttons, {
+            x = 100,
+            y = buttonY,
+            width = 200,
+            height = 40,
+            text = "Fight " .. monster.data.name,
+            action = function()
+                currentSkill = "combat"
+                currentAction = monster.name
+            end
+        })
+        buttonY = buttonY + 50
+    end
+    
+    if totalPages > 1 then
+        if pages.combat.pages > 1 then
+            table.insert(states.combat.buttons, {
+                x = 100,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Previous",
+                action = function()
+                    pages.combat.pages = pages.combat.pages - 1
+                    updateCombatButtons()
+                end
+            })
+        end
+        
+        if pages.combat.pages < totalPages then
+            table.insert(states.combat.buttons, {
+                x = 300,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Next",
+                action = function()
+                    pages.combat.pages = pages.combat.pages + 1
+                    updateCombatButtons()
+                end
+            })
         end
     end
 end
@@ -1299,6 +1529,13 @@ states.woodcutting = {
         if currentSkill == "woodcutting" and currentAction ~= "" then
             love.graphics.print("Currently cutting: " .. currentAction, 50, 140)
         end
+
+        local totalActions = 0
+        for _ in pairs(skilling.woodcutting) do totalActions = totalActions + 1 end
+        local totalPages = math.ceil(totalActions / pages.skill.perPage)
+        if totalPages > 1 then
+            love.graphics.printf("Page " .. (pages.skill.pages.woodcutting or 1) .. " of " .. totalPages, 0, 170, love.graphics.getWidth(), "center")
+        end
     end,
     buttons = {}
 }
@@ -1312,6 +1549,13 @@ states.thieving = {
         
         if currentSkill == "thieving" and currentAction ~= "" then
             love.graphics.print("Currently pickpocketing: " .. currentAction, 50, 140)
+        end
+
+        local totalActions = 0
+        for _ in pairs(skilling.thieving) do totalActions = totalActions + 1 end
+        local totalPages = math.ceil(totalActions / pages.skill.perPage)
+        if totalPages > 1 then
+            love.graphics.printf("Page " .. (pages.skill.pages.thieving or 1) .. " of " .. totalPages, 0, 170, love.graphics.getWidth(), "center")
         end
     end,
     buttons = {}
@@ -1327,23 +1571,37 @@ states.mining = {
         if currentSkill == "mining" and currentAction ~= "" then
             love.graphics.print("Currently mining: " .. currentAction, 50, 140)
         end
+
+        local totalActions = 0
+        for _ in pairs(skilling.mining) do totalActions = totalActions + 1 end
+        local totalPages = math.ceil(totalActions / pages.skill.perPage)
+        if totalPages > 1 then
+            love.graphics.printf("Page " .. (pages.skill.pages.mining or 1) .. " of " .. totalPages, 0, 170, love.graphics.getWidth(), "center")
+        end
     end,
     buttons = {}
 }
 
 states.crafting = {
     text = function ()
-        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.setColor(1, 1, 1)
         love.graphics.printf("Crafting", 0, 50, love.graphics.getWidth(), "center")
         love.graphics.print("Choose a recipe to craft:", 50, 100)
         love.graphics.printf("Your coins: " .. player.inventory.coins, 0, 120, love.graphics.getWidth(), "center")
+        
+        local totalRecipes = 0
+        for _ in pairs(recipies) do totalRecipes = totalRecipes + 1 end
+        local totalPages = math.ceil(totalRecipes / pages.crafting.perPage)
+        if totalPages > 1 then
+            love.graphics.printf("Page " .. pages.crafting.pages .. " of " .. totalPages, 0, 140, love.graphics.getWidth(), "center")
+        end
     end,
     buttons = {}
 }
 
 states.combat = {
     text = function ()
-        love.graphics.setColor(1, 1, 1) -- White
+        love.graphics.setColor(1, 1, 1)
         love.graphics.printf("Combat", 0, 50, love.graphics.getWidth(), "center")
         love.graphics.print("Choose a monster to fight:", 50, 100)
         love.graphics.print("Your attack level: " .. player.skills.attack, 50, 120)
@@ -1354,38 +1612,18 @@ states.combat = {
             love.graphics.print("Fighting: " .. currentTarget.name, 50, 190)
             love.graphics.print("Monster Health: " .. currentTarget.currentHealth .. "/" .. currentTarget.health, 50, 210)
         end
+        
+        local totalMonsters = 0
+        for _ in pairs(monsters) do totalMonsters = totalMonsters + 1 end
+        local totalPages = math.ceil(totalMonsters / pages.combat.perPage)
+        if totalPages > 1 then
+            love.graphics.printf("Page " .. pages.combat.pages .. " of " .. totalPages, 0, 230, love.graphics.getWidth(), "center")
+        end
     end,
-    buttons = {
-        {
-            x = 400,
-            y = 400,
-            width = 120,
-            height = 50,
-            text = "Back to Game",
-            action = function() 
-                currentState = "game"
-                currentAction = ""
-                currentSkill = ""
-            end
-        }
-    }
+    buttons = {}
 }
 
-local combatButtonY = 250
-for monsterName, monsterData in pairs(monsters) do
-    table.insert(states.combat.buttons, {
-        x = 100,
-        y = combatButtonY,
-        width = 200,
-        height = 40,
-        text = "Fight " .. monsterData.name,
-        action = function()
-            currentSkill = "combat"
-            currentAction = monsterName
-        end
-    })
-    combatButtonY = combatButtonY + 50
-end
+
 
 function checkSkillRequirement(skill, actionName)
     local skillData = skilling[skill] and skilling[skill][actionName]
@@ -1396,125 +1634,145 @@ function checkSkillRequirement(skill, actionName)
     return player.skills[skill] >= skillData.requirement
 end
 
-function createSkillButtons()
-    states.woodcutting.buttons = {
+function updateSkillButtons(skillName)
+    local skillData = skilling[skillName]
+    if not skillData then return end
+
+    if not pages.skill.pages[skillName] then
+        pages.skill.pages[skillName] = 1
+    end
+
+    states[skillName].buttons = {
         {
             x = 400,
-            y = 400,
+            y = 500,
             width = 120,
             height = 50,
             text = "Back to Game",
             action = function() currentState = "game" end
         }
     }
+
+    local actionsArray = {}
+    for actionName, actionData in pairs(skillData) do
+        table.insert(actionsArray, {name = actionName, data = actionData})
+    end
     
+    local totalActions = #actionsArray
+    local totalPages = math.ceil(totalActions / pages.skill.perPage)
+    local currentPage = pages.skill.pages[skillName]
+
+    local startIndex = (currentPage - 1) * pages.skill.perPage + 1
+    local endIndex = math.min(startIndex + pages.skill.perPage - 1, totalActions)
+
     local buttonY = 200
-    for actionName, actionData in pairs(skilling.woodcutting) do
-        table.insert(states.woodcutting.buttons, {
+    for i = startIndex, endIndex do
+        local action = actionsArray[i]
+        local newButton = {
             x = 100,
             y = buttonY,
             width = 200,
             height = 40,
-            text = actionName .. " (Req: " .. actionData.requirement .. ")",
-            action = function()
-                if checkSkillRequirement("woodcutting", actionName) then
+            text = action.name .. " (Req: " .. action.data.requirement .. ")",
+            requirement = action.data.requirement,
+            skill = skillName,
+        }
+
+        if skillName == "woodcutting" then
+            newButton.action = function()
+                if checkSkillRequirement("woodcutting", action.name) then
                     if not tools[player.inventory.tools.axe] then
                         print("You need an axe to woodcut!")
                         return
                     end
                     currentSkill = "woodcutting"
-                    currentAction = actionName
-                    print("Started " .. actionName .. " woodcutting!")
+                    currentAction = action.name
+                    print("Started " .. action.name .. " woodcutting!")
                 else
-                    print("You need level " .. actionData.requirement .. " woodcutting!")
+                    print("You need level " .. action.data.requirement .. " woodcutting!")
                 end
-            end,
-            requirement = actionData.requirement,
-            skill = "woodcutting",
-        })
-        buttonY = buttonY + 50
-    end
-    
-    states.thieving.buttons = {
-        {
-            x = 400,
-            y = 400,
-            width = 120,
-            height = 50,
-            text = "Back to Game",
-            action = function() currentState = "game" end
-        }
-    }
-    
-    buttonY = 200
-    for actionName, actionData in pairs(skilling.thieving) do
-
-        table.insert(states.thieving.buttons, {
-            x = 100,
-            y = buttonY,
-            width = 200,
-            height = 40,
-            text = actionName .. " (Req: " .. actionData.requirement .. ")",
-            action = function() 
-                if checkSkillRequirement("thieving", actionName) then
+            end
+        elseif skillName == "thieving" then
+            newButton.action = function()
+                if checkSkillRequirement("thieving", action.name) then
                     currentSkill = "thieving"
-                    currentAction = actionName
-                    print("Started pickpocketing " .. actionName .. "!")
+                    currentAction = action.name
+                    print("Started pickpocketing " .. action.name .. "!")
                 else
-                    print("You need level " .. actionData.requirement .. " thieving!")
+                    print("You need level " .. action.data.requirement .. " thieving!")
                 end
-            end,
-            requirement = actionData.requirement,
-            skill = "thieving",
-            
-        })
-        buttonY = buttonY + 50
-    end
-    
-    states.mining.buttons = {
-        {
-            x = 400,
-            y = 400,
-            width = 120,
-            height = 50,
-            text = "Back to Game",
-            action = function() currentState = "game" end
-        }
-    }
-    
-    buttonY = 200
-    for actionName, actionData in pairs(skilling.mining) do
-        table.insert(states.mining.buttons, {
-            x = 100,
-            y = buttonY,
-            width = 200,
-            height = 40,
-            text = actionName .. " (Req: " .. actionData.requirement .. ")",
-            action = function() 
-                if checkSkillRequirement("mining", actionName) then
+            end
+        elseif skillName == "mining" then
+            newButton.action = function()
+                if checkSkillRequirement("mining", action.name) then
                     if not tools[player.inventory.tools.pickaxe] then
                         print("You need a pickaxe to mine!")
                         return
                     end
                     currentSkill = "mining"
-                    currentAction = actionName
-                    print("Started mining " .. actionName .. "!")
+                    currentAction = action.name
+                    print("Started mining " .. action.name .. "!")
                 else
-                    print("You need level " .. actionData.requirement .. " mining!")
+                    print("You need level " .. action.data.requirement .. " mining!")
                 end
-            end,
-            requirement = actionData.requirement,
-            skill = "mining",
-        })
+            end
+        end
+        
         buttonY = buttonY + 50
+        table.insert(states[skillName].buttons, newButton)
     end
+
+    if totalPages > 1 then
+        if currentPage > 1 then
+            table.insert(states[skillName].buttons, {
+                x = 100,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Previous",
+                action = function()
+                    pages.skill.pages[skillName] = pages.skill.pages[skillName] - 1
+                    updateSkillButtons(skillName)
+                end
+            })
+        end
+
+        if currentPage < totalPages then
+            table.insert(states[skillName].buttons, {
+                x = 300,
+                y = 450,
+                width = 80,
+                height = 40,
+                text = "Next",
+                action = function()
+                    pages.skill.pages[skillName] = pages.skill.pages[skillName] + 1
+                    updateSkillButtons(skillName)
+                end
+            })
+        end
+    end
+end
+
+function createSkillButtons()
+    pages.skill.pages.woodcutting = 1
+    pages.skill.pages.thieving = 1
+    pages.skill.pages.mining = 1
+
+    updateSkillButtons("woodcutting")
+    updateSkillButtons("thieving")
+    updateSkillButtons("mining")
 end
 
 function love.load()
     love.filesystem.setIdentity("idleRPG")
     loadPlayerData()
     updateEquipmentButtons()
-    createSkillButtons()  
+    createSkillButtons()
+    updateCombatButtons()
+    
+    addChatMessage("Welcome to Idle RPG!")
+    addChatMessage("Use this chat to see game messages.")
+    addChatMessage("Scroll with mouse wheel over chat box.")
 end
 
 function love.update(dt)
@@ -1531,6 +1789,47 @@ function love.update(dt)
     end
     
     updateNotifications(dt)
+end
+
+function drawChatBox()
+    local chatX = love.graphics.getWidth() - 410
+    local chatY = love.graphics.getHeight() - 310
+    local chatW = 400
+    local chatH = 300
+    
+    -- Chat box background
+    love.graphics.setColor(0, 0, 0, 0.8)
+    love.graphics.rectangle("fill", chatX, chatY, chatW, chatH)
+    love.graphics.setColor(0.3, 0.3, 0.3, 1)
+    love.graphics.rectangle("line", chatX, chatY, chatW, chatH)
+    
+    -- Chat title
+    love.graphics.setColor(1, 1, 1, 1)
+    love.graphics.print("Chat", chatX + 5, chatY + 5)
+    
+    -- Chat messages
+    local startY = chatY + 25
+    local messageHeight = 15
+    local visibleMessages = math.floor((chatH - 35) / messageHeight)
+    local startIndex = math.max(1, #chatMessages - visibleMessages + 1 - chatScroll)
+    
+    for i = startIndex, math.min(startIndex + visibleMessages - 1, #chatMessages) do
+        if chatMessages[i] then
+            local y = startY + (i - startIndex) * messageHeight
+            -- Wrap text if too long
+            local wrappedText = chatMessages[i]
+            if love.graphics.getFont():getWidth(wrappedText) > chatW - 10 then
+                wrappedText = string.sub(wrappedText, 1, 30) .. "..."
+            end
+            love.graphics.print(wrappedText, chatX + 5, y)
+        end
+    end
+    
+    -- Scroll indicator
+    if #chatMessages > visibleMessages then
+        love.graphics.setColor(0.7, 0.7, 0.7, 1)
+        love.graphics.print("Scroll: Mouse Wheel", chatX + 5, chatY + chatH - 15)
+    end
 end
 
 function love.draw()
@@ -1554,6 +1853,22 @@ function love.draw()
         end
     end
     drawNotifications()
+    drawChatBox()
+end
+
+function love.wheelmoved(x, y)
+    local chatX = love.graphics.getWidth() - 410
+    local chatY = love.graphics.getHeight() - 310
+    local chatW = 400
+    local chatH = 300
+    local mouseX, mouseY = love.mouse.getPosition()
+    
+    -- Check if mouse is over chat box
+    if mouseX >= chatX and mouseX <= chatX + chatW and mouseY >= chatY and mouseY <= chatY + chatH then
+        local visibleMessages = math.floor((chatH - 35) / 15)
+        local maxScroll = math.max(0, #chatMessages - visibleMessages)
+        chatScroll = math.max(0, math.min(maxScroll, chatScroll + y))
+    end
 end
 
 function drawButton(button)
